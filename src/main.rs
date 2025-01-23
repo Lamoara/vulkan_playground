@@ -5,11 +5,35 @@
     clippy::unnecessary_wraps
 )]
 
-use anyhow::Result;
+mod app;
+mod appdata;
+mod queue_family_indices;
+mod devices;
+mod instance;
+
+use anyhow::{anyhow, Ok, Result};
+use app::App;
+use log::*;
+
+use vulkanalia::prelude::v1_0::*;
+use vulkanalia::Version;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+use winit::window::WindowBuilder;
+
+use std::ffi::CStr;
+use std::os::raw::c_void;
+
+
+
+
+const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
+
+const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
+
+const VALIDATION_LAYER: vk::ExtensionName = vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
+
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -46,25 +70,27 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Our Vulkan app.
-#[derive(Clone, Debug)]
-struct App {}
 
-impl App {
-    /// Creates our Vulkan app.
-    unsafe fn create(window: &Window) -> Result<Self> {
-        Ok(Self {})
+extern "system" fn debug_callback(
+    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    type_: vk::DebugUtilsMessageTypeFlagsEXT,
+    data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _: *mut c_void,
+) -> vk::Bool32 {
+    let data = unsafe { *data };
+    let message = unsafe { CStr::from_ptr(data.message) }.to_string_lossy();
+
+    if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        error!("({:?}) {}", type_, message);
+    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
+        warn!("({:?}) {}", type_, message);
+    } else if severity >= vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
+        debug!("({:?}) {}", type_, message);
+    } else {
+        trace!("({:?}) {}", type_, message);
     }
 
-    /// Renders a frame for our Vulkan app.
-    unsafe fn render(&mut self, window: &Window) -> Result<()> {
-        Ok(())
-    }
-
-    /// Destroys our Vulkan app.
-    unsafe fn destroy(&mut self) {}
+    vk::FALSE
 }
 
-/// The Vulkan handles and associated properties used by our Vulkan app.
-#[derive(Clone, Debug, Default)]
-struct AppData {}
+    
