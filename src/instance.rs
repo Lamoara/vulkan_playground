@@ -22,7 +22,7 @@ use super::VALIDATION_ENABLED;
 
 use winit::window::Window;
 
-pub(crate) unsafe fn create_instance(
+pub unsafe fn create_instance(
     window: &Window,
     entry: &Entry,
     data: &mut appdata::AppData

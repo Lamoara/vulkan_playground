@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+
 use crate::appdata;
 use crate::queue_family_indices;
+use crate::queue_family_indices::QueueFamilyIndices;
+use crate::swapchain_support::SwapchainSupport;
+use crate::DEVICE_EXTENSIONS;
 use crate::VALIDATION_LAYER;
 
 use super::PORTABILITY_MACOS_VERSION;
@@ -23,7 +28,7 @@ use vulkanalia::Instance;
 #[error("Missing {0}.")]
 pub struct SuitabilityError(pub &'static str);
 
-pub(crate) unsafe fn pick_physical_device(instance: &Instance, data: &mut appdata::AppData) -> Result<()> {
+pub unsafe fn pick_physical_device(instance: &Instance, data: &mut appdata::AppData) -> Result<()> {
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
 
@@ -39,27 +44,61 @@ pub(crate) unsafe fn pick_physical_device(instance: &Instance, data: &mut appdat
     Err(anyhow!("Failed to find suitable physical device."))
 }
 
-pub(crate) unsafe fn check_physical_device(
+pub unsafe fn check_physical_device(
     instance: &Instance,
     data: &appdata::AppData,
     physical_device: vk::PhysicalDevice,
 ) -> Result<()> {
     queue_family_indices::QueueFamilyIndices::get(instance, data, physical_device)?;
+    check_physical_device_extensions(instance, physical_device)?;
+
+    let support = SwapchainSupport::get(instance, data, physical_device)?;
+    if support.formats.is_empty() || support.present_modes.is_empty() {
+        return Err(anyhow!(SuitabilityError("Insufficient swapchain support.")));
+    }
+    
     Ok(())
 }
 
-pub(crate) unsafe fn create_logical_device(
+unsafe fn check_physical_device_extensions(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+) -> Result<()> {
+    let extensions = instance
+        .enumerate_device_extension_properties(physical_device, None)?
+        .iter()
+        .map(|e| e.extension_name)
+        .collect::<HashSet<_>>();
+    if DEVICE_EXTENSIONS.iter().all(|e| extensions.contains(e)) {
+        Ok(())
+    } else {
+        Err(anyhow!(SuitabilityError("Missing required device extensions.")))
+    }
+}
+
+
+
+pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
     data: &mut appdata::AppData,
 ) -> Result<Device> 
 {
-    let indices = queue_family_indices::QueueFamilyIndices::get(instance, data, data.physical_device)?;
+    let indices = QueueFamilyIndices::get(instance, data, data.physical_device)?;
 
+    let mut unique_indices = HashSet::new();
+    unique_indices.insert(indices.graphics);
+    unique_indices.insert(indices.present);
+    
     let queue_priorities = &[1.0];
-    let queue_info = vk::DeviceQueueCreateInfo::builder()
-        .queue_family_index(indices.graphics)
-        .queue_priorities(queue_priorities);
+    let queue_infos = unique_indices
+        .iter()
+        .map(|i| {
+            vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(*i)
+                .queue_priorities(queue_priorities)
+        })
+        .collect::<Vec<_>>();
 
     let layers = if VALIDATION_ENABLED {
         vec![VALIDATION_LAYER.as_ptr()]
@@ -67,7 +106,10 @@ pub(crate) unsafe fn create_logical_device(
         vec![]
     };
 
-    let mut extensions = vec![];
+    let mut extensions = DEVICE_EXTENSIONS
+        .iter()
+        .map(|n| n.as_ptr())
+        .collect::<Vec<_>>();
 
     // Required by Vulkan SDK on macOS since 1.3.216.
     if cfg!(target_os = "macos") && entry.version()? >= PORTABILITY_MACOS_VERSION {
@@ -76,16 +118,16 @@ pub(crate) unsafe fn create_logical_device(
 
     let features = vk::PhysicalDeviceFeatures::builder();
 
-    let queue_infos = &[queue_info];
-    let info = vk::DeviceCreateInfo::builder()
-        .queue_create_infos(queue_infos)
-        .enabled_layer_names(&layers)
-        .enabled_extension_names(&extensions)
-        .enabled_features(&features);
+    let info = vk::DeviceCreateInfo::builder()        
+    .queue_create_infos(&queue_infos)
+    .enabled_layer_names(&layers)
+    .enabled_extension_names(&extensions)
+    .enabled_features(&features);
 
     let device = instance.create_device(data.physical_device, &info, None)?;
 
     data.graphics_queue = device.get_device_queue(indices.graphics, 0);
+    data.present_queue = device.get_device_queue(indices.present, 0);
 
     Ok(device)
 }

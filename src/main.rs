@@ -10,6 +10,7 @@ mod appdata;
 mod queue_family_indices;
 mod devices;
 mod instance;
+mod swapchain_support;
 
 use anyhow::{anyhow, Ok, Result};
 use app::App;
@@ -26,13 +27,13 @@ use std::ffi::CStr;
 use std::os::raw::c_void;
 
 
-
-
 const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
-
 const VALIDATION_LAYER: vk::ExtensionName = vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
+
+const DEVICE_EXTENSIONS: &[vk::ExtensionName] = &[vk::KHR_SWAPCHAIN_EXTENSION.name];
+
 
 
 fn main() -> Result<()> {
