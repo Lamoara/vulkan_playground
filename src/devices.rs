@@ -29,16 +29,24 @@ use vulkanalia::Instance;
 pub struct SuitabilityError(pub &'static str);
 
 pub unsafe fn pick_physical_device(instance: &Instance, data: &mut appdata::AppData) -> Result<()> {
+
+    let mut found: bool = false;
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
 
         if let Err(error) = check_physical_device(instance, data, physical_device) {
             warn!("Skipping physical device (`{}`): {}", properties.device_name, error);
-        } else {
+        } else if !found 
+            || instance.get_physical_device_properties(data.physical_device).limits.max_compute_shared_memory_size < properties.limits.max_compute_shared_memory_size 
+            {
             info!("Selected physical device (`{}`).", properties.device_name);
             data.physical_device = physical_device;
-            return Ok(());
+            found = true;
         }
+    }
+
+    if found {
+        return Ok(());
     }
 
     Err(anyhow!("Failed to find suitable physical device."))
