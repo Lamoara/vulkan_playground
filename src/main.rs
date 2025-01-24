@@ -11,8 +11,10 @@ mod queue_family_indices;
 mod devices;
 mod instance;
 mod swapchain_support;
+mod swapchain;
+mod pipeline;
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{Ok, Result};
 use app::App;
 use log::*;
 
